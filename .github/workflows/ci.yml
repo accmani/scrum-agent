@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  # ── Backend ────────────────────────────────────────────────────────────────
+  backend:
+    name: Backend (Python 3.12)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt ruff pytest
+
+      - name: Lint (ruff)
+        run: ruff check . --ignore E501
+
+      - name: Verify imports
+        # Ensures all modules resolve without syntax/import errors.
+        # Real API keys are not needed — placeholders satisfy os.environ[] calls.
+        env:
+          ANTHROPIC_API_KEY: ci-placeholder
+          JIRA_BASE_URL: https://example.atlassian.net/
+          JIRA_EMAIL: ci@example.com
+          JIRA_API_TOKEN: ci-placeholder
+          JIRA_PROJECT_KEY: CI
+          GITHUB_TOKEN: ci-placeholder
+          GITHUB_REPO: ci/repo
+        run: |
+          python -c "import models, jira_client, github_client, database"
+          python -c "import agents"
+          python -c "import routers.blockers, routers.retro, routers.velocity"
+          python -c "import orchestrator"
+
+      - name: Test (pytest)
+        env:
+          ANTHROPIC_API_KEY: ci-placeholder
+          JIRA_BASE_URL: https://example.atlassian.net/
+          JIRA_EMAIL: ci@example.com
+          JIRA_API_TOKEN: ci-placeholder
+          JIRA_PROJECT_KEY: CI
+          GITHUB_TOKEN: ci-placeholder
+          GITHUB_REPO: ci/repo
+        # Exit code 5 = no tests collected; treat as pass until tests are added.
+        run: pytest -q || [ $? -eq 5 ]
+
+  # ── Frontend ───────────────────────────────────────────────────────────────
+  frontend:
+    name: Frontend (Node 20)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
