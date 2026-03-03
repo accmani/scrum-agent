@@ -28,7 +28,8 @@ jobs:
         run: pip install -r requirements.txt ruff pytest
 
       - name: Lint (ruff)
-        run: ruff check . --ignore E501
+        # E501: line too long  E402: import not at top (load_dotenv() must run first)
+        run: ruff check . --ignore E501,E402
 
       - name: Verify imports
         # Ensures all modules resolve without syntax/import errors.
