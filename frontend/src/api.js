@@ -29,6 +29,9 @@ export const fetchGithubIssues = () =>
 export const sendChat = (message, history, agent = null) =>
   api.post('/api/chat', { message, history, agent }).then(r => r.data)
 
+export const fixIssue = (issue_key, description = '') =>
+  api.post('/api/fix-issue', { issue_key, description }, { timeout: 120000 }).then(r => r.data)
+
 export const sendStandup = ({ team_name, include_blockers, include_stats }) =>
   api.post('/api/standup', { team_name, include_blockers, include_stats }).then(r => r.data)
 

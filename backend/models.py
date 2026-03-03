@@ -45,3 +45,8 @@ class CreateGithubIssueRequest(BaseModel):
     title: str
     body: str = ""
     labels: list[str] | None = None
+
+
+class FixIssueRequest(BaseModel):
+    issue_key: str   # Jira key ("PROJ-42"), GitHub number ("gh-15" or "#15"), or free text
+    description: str = ""  # optional extra context to help Claude understand the bug

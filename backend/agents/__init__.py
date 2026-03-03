@@ -3,6 +3,7 @@ from .jira_agent import JiraAgent
 from .github_agent import GithubAgent
 from .standup_agent import StandupAgent
 from .planning_agent import PlanningAgent
+from .code_fix_agent import CodeFixAgent
 
 __all__ = [
     "ScrumMasterAgent",
@@ -10,4 +11,5 @@ __all__ = [
     "GithubAgent",
     "StandupAgent",
     "PlanningAgent",
+    "CodeFixAgent",
 ]

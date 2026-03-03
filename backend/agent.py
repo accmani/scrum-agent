@@ -10,7 +10,7 @@ import anthropic
 from jira_client import get_sprint_tickets, create_ticket, move_ticket
 from github_client import get_open_issues
 from models import ChatMessage
-from agents import ScrumMasterAgent, JiraAgent, GithubAgent, StandupAgent, PlanningAgent
+from agents import ScrumMasterAgent, JiraAgent, GithubAgent, StandupAgent, PlanningAgent, CodeFixAgent
 
 _NAMED_AGENTS = {
     "scrum_master": ScrumMasterAgent(),
@@ -18,6 +18,7 @@ _NAMED_AGENTS = {
     "github":       GithubAgent(),
     "standup":      StandupAgent(),
     "planning":     PlanningAgent(),
+    "code_fix":     CodeFixAgent(),
 }
 
 MODEL = "claude-sonnet-4-20250514"
@@ -49,6 +50,11 @@ You can autonomously take the following actions by including a JSON code block i
 2. **Create a new Jira ticket**:
 ```action
 {{"action": "create_ticket", "summary": "Ticket title", "description": "Details", "priority": "Medium", "story_points": 3}}
+```
+
+3. **Fix a bug and open a Pull Request** (reads code, generates fix, creates branch + PR):
+```action
+{{"action": "fix_issue", "issue_key": "PROJ-42", "description": "brief context about the bug"}}
 ```
 
 ## Guidelines
@@ -146,6 +152,13 @@ async def _execute_action(action: dict) -> dict:
             description=action.get("description", ""),
             priority=action.get("priority", "Medium"),
             story_points=action.get("story_points"),
+        )
+
+    if action_type == "fix_issue":
+        agent = CodeFixAgent()
+        return await agent.fix_issue(
+            issue_key=action["issue_key"],
+            description=action.get("description", ""),
         )
 
     return {"error": f"Unknown action type: '{action_type}'"}

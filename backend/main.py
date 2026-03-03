@@ -14,6 +14,7 @@ from models import (
     CreateTicketRequest,
     MoveTicketRequest,
     CreateGithubIssueRequest,
+    FixIssueRequest,
 )
 from agent import run_agent, generate_standup
 from jira_client import (
@@ -23,6 +24,7 @@ from jira_client import (
     get_sprint_stats,
 )
 from github_client import get_open_issues, create_issue
+from agents import CodeFixAgent
 from orchestrator import handle_team_chat
 from routers import blockers, retro, velocity
 import database
@@ -155,6 +157,31 @@ async def new_issue(req: CreateGithubIssueRequest):
         return await create_issue(title=req.title, body=req.body, labels=req.labels)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# Code Fix Agent
+# ---------------------------------------------------------------------------
+
+@app.post("/api/fix-issue", tags=["Agent"])
+async def fix_issue(req: FixIssueRequest):
+    """
+    Trigger the Code Fix Agent pipeline:
+    1. Identify relevant source files for the issue
+    2. Generate a code fix
+    3. Create a branch, commit the fix, open a Pull Request
+    4. Move the Jira ticket to "In Review" (if applicable)
+    """
+    try:
+        agent = CodeFixAgent()
+        result = await agent.fix_issue(req.issue_key, req.description)
+        if "error" in result:
+            raise HTTPException(status_code=422, detail=result["error"])
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------
