@@ -1,5 +1,7 @@
 # Scrum Agent
 
+[![CI](https://github.com/accmani/scrum-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/accmani/scrum-agent/actions/workflows/ci.yml)
+
 An AI-powered Scrum assistant that integrates with Jira and GitHub using Claude (Anthropic) to help manage sprints, generate reports, and automate scrum workflows.
 
 ## Project Structure
