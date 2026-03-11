@@ -19,6 +19,9 @@ from agents import (
     GithubAgent,
     StandupAgent,
     PlanningAgent,
+    CodeReviewerAgent,
+    DesignAgent,
+    TestAgent,
 )
 from jira_client import get_sprint_tickets
 from github_client import get_open_issues
@@ -31,6 +34,9 @@ _AGENTS = [
     GithubAgent(),
     StandupAgent(),
     PlanningAgent(),
+    CodeReviewerAgent(),
+    DesignAgent(),
+    TestAgent(),
 ]
 
 

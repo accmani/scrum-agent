@@ -50,3 +50,8 @@ class CreateGithubIssueRequest(BaseModel):
 class FixIssueRequest(BaseModel):
     issue_key: str   # Jira key ("PROJ-42"), GitHub number ("gh-15" or "#15"), or free text
     description: str = ""  # optional extra context to help Claude understand the bug
+
+
+class TriggerPipelineRequest(BaseModel):
+    issue_key: str
+    description: str = ""

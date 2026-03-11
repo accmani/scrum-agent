@@ -1,8 +1,11 @@
 import os
+import logging
 from dotenv import load_dotenv
 
 # Load .env FIRST — before any local module runs module-level os.getenv() calls
 load_dotenv(override=True)
+
+logging.basicConfig(level=logging.INFO)
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, WebSocket
@@ -15,6 +18,7 @@ from models import (
     MoveTicketRequest,
     CreateGithubIssueRequest,
     FixIssueRequest,
+    TriggerPipelineRequest,
 )
 from agent import run_agent, generate_standup
 from jira_client import (
@@ -22,12 +26,15 @@ from jira_client import (
     create_ticket,
     move_ticket as jira_move_ticket,
     get_sprint_stats,
+    get_issue_types,
 )
 from github_client import get_open_issues, create_issue
 from agents import CodeFixAgent
 from orchestrator import handle_team_chat
 from routers import blockers, retro, velocity
 import database
+import pipeline as pl
+import webhook_handler as wh
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 
@@ -35,10 +42,11 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await database.init_db()
+    await wh.start_polling()   # start background Jira polling
     yield
 
 
-app = FastAPI(title="Scrum Agent API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Scrum Agent API", version="2.0.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,7 +71,7 @@ app.include_router(velocity.router)
 
 @app.get("/health", tags=["Health"])
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "2.0.0"}
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +147,14 @@ async def sprint_stats():
         raise HTTPException(status_code=502, detail=str(e))
 
 
+@app.get("/api/jira/issue-types", tags=["Jira"])
+async def list_issue_types():
+    try:
+        return {"issue_types": await get_issue_types()}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
 # ---------------------------------------------------------------------------
 # GitHub
 # ---------------------------------------------------------------------------
@@ -160,32 +176,67 @@ async def new_issue(req: CreateGithubIssueRequest):
 
 
 # ---------------------------------------------------------------------------
-# Code Fix Agent
+# Code Fix Agent (direct / chat-triggered)
 # ---------------------------------------------------------------------------
 
 @app.post("/api/fix-issue", tags=["Agent"])
 async def fix_issue(req: FixIssueRequest):
     """
-    Trigger the Code Fix Agent pipeline:
-    1. Identify relevant source files for the issue
-    2. Generate a code fix
-    3. Create a branch, commit the fix, open a Pull Request
-    4. Move the Jira ticket to "In Review" (if applicable)
+    Trigger the Code Fix Agent pipeline directly (chat-triggered mode).
+    Streams progress via /ws/pipeline.
     """
     try:
-        agent = CodeFixAgent()
-        result = await agent.fix_issue(req.issue_key, req.description)
-        if "error" in result:
-            raise HTTPException(status_code=422, detail=result["error"])
+        result = await wh.trigger_pipeline(req.issue_key, req.description)
         return result
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 # ---------------------------------------------------------------------------
-# Team Feed WebSocket  (two paths: short alias + full)
+# Autonomous Pipeline — Jira Webhook + manual trigger
+# ---------------------------------------------------------------------------
+
+@app.post("/api/webhook/jira", tags=["Pipeline"])
+async def jira_webhook(payload: dict):
+    """
+    Receive Jira webhook events.
+    Configure in Jira: Project Settings → Webhooks → URL: http://your-server/api/webhook/jira
+    Events: Issue Created, Issue Updated
+    """
+    try:
+        result = await wh.handle_jira_webhook(payload)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/pipeline/trigger", tags=["Pipeline"])
+async def trigger_pipeline(req: TriggerPipelineRequest):
+    """
+    Manually trigger the autonomous pipeline for a Jira issue key.
+    Used for the demo — no webhook configuration required.
+    """
+    try:
+        result = await wh.trigger_pipeline(req.issue_key, req.description)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/pipeline/runs", tags=["Pipeline"])
+async def get_pipeline_runs():
+    """Return all recent pipeline runs (newest first)."""
+    return {"runs": pl.get_runs()}
+
+
+@app.get("/api/pipeline/processed", tags=["Pipeline"])
+async def get_processed_keys():
+    """Return issue keys processed this session."""
+    return {"processed": wh.get_processed_keys()}
+
+
+# ---------------------------------------------------------------------------
+# WebSockets
 # ---------------------------------------------------------------------------
 
 @app.websocket("/ws")
@@ -196,6 +247,12 @@ async def team_feed_ws(websocket: WebSocket):
 @app.websocket("/ws/team-chat")
 async def team_feed_ws_compat(websocket: WebSocket):
     await handle_team_chat(websocket)
+
+
+@app.websocket("/ws/pipeline")
+async def pipeline_ws(websocket: WebSocket):
+    """Real-time pipeline progress stream."""
+    await pl.handle_pipeline_ws(websocket)
 
 
 if __name__ == "__main__":
